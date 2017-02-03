@@ -45,7 +45,7 @@ class tracker(): #Tracker
 class SSNE_param:
     def __init__(self, is_memoried):
         self.num_input = 1
-        self.num_hnodes = 1
+        self.num_hnodes = 5
         self.num_output = 1
         if is_memoried: self.type_id = 'memoried'
         else: self.type_id = 'normal'
@@ -100,7 +100,8 @@ class Parameters:
             #3 Fine continous reward - prediction at each time-step matters
             #4 Coarse reward clacluated only at points of 1/-1 introdcution
             #5 Combine #3 and #2 (test)
-            self.reward_scheme = 5
+            #6 Add #3 and #4
+            self.reward_scheme = 6
             self.tolerance = 1
             self.test_tolerance = 1
             if self.arch_type == 0: self.arch_type = 'quasi_gru'
@@ -179,6 +180,17 @@ class Sequence_classifier:
                 reward += point_reward
             if j * target > 0: reward += parameters.depth / 2.0
 
+        elif self.parameters.reward_scheme == 6: #3 Add #3 and #4
+            reward = 0.0
+            target = 0.0
+            for i, j in zip(input, output):
+                target += i
+                point_reward = j * target
+                if point_reward > 1: point_reward = 1
+                elif point_reward < -1: point_reward = -1
+                if i != 0 and point_reward == 1: reward += 1 #At =-1 points extra point
+                reward += point_reward
+
         return reward
 
     def run_simulation(self, index, epoch_inputs):
@@ -221,26 +233,34 @@ class Sequence_classifier:
         self.agent.epoch()
         return best_epoch_reward, hof_score
 
-    def test_net(self, index): #Test is binary
+    def test_net(self, index):  # Test is binary
         reward = 0.0
         for trial in range(self.parameters.test_trials):
             self.agent.pop[index].reset_bank()
             if trial == self.parameters.test_trials - 1: print self.agent.pop[index].memory_cell.transpose(),
 
-            input = self.generate_input() #get input
+            input = self.generate_input()  # get input
             net_output = []
-            for inp in input: #Run network to get output
-                inp=np.array([inp])
+            for inp in input:  # Run network to get output
+                inp = np.array([inp])
                 net_output.append((self.agent.pop[index].feedforward(inp)[0][0] - 0.5) * 2)
-            target = sum(input)
-            if target > 1: target = 1
-            elif target < -1: target = -1
-            if net_output[-1] * target > (1.0 - self.parameters.test_tolerance): reward += 1.0
-            if trial == self.parameters.test_trials-1: print target, net_output[-1]
+
+            target = 0.0
+            reward += 1
+
+            for i, j in zip(input, net_output):
+                target += i
+                if i == 1 or i == -1:
+                    point_reward = j * target
+                    if point_reward < 0:
+                        reward -= 1
+                        break
+
+            if trial == self.parameters.test_trials - 1: print target, net_output[-1]
 
         print self.agent.pop[index].memory_cell.transpose()
         print
-        return reward/(self.parameters.test_trials)
+        return reward / (self.parameters.test_trials)
 
 if __name__ == "__main__":
     print 'Running SEQUENCE CLASSIFIER with ', parameters.arch_type
