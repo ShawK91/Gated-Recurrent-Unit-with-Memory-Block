@@ -1116,6 +1116,48 @@ class SSNE:
             filename = str(self.current_gen) + '_' + filename
             pickle_object(self.pop, filename)
 
+#SSNE method to test evolved stuff
+class Test_SSNE:
+    def __init__(self, parameters, ssne_param, is_class):
+        self.current_gen = 0
+        self.parameters = parameters;
+        self.ssne_param = ssne_param
+        self.num_weights = self.ssne_param.total_num_weights;
+        self.population_size = self.parameters.population_size;
+        self.num_elitists = int(self.ssne_param.elite_fraction * parameters.population_size)
+        if self.num_elitists < 1: self.num_elitists = 1
+
+        self.fitness_evals = [[] for x in xrange(parameters.population_size)]  # Fitness eval list
+        # Load population
+        if is_class:
+            self.pop = unpickle('RSeq_classifier/seq_classification_pop')
+        else:
+            self.pop = unpickle('RSeq_Recall/seq_recall_pop')
+
+        # if self.ssne_param.type_id == 'memoried':
+        #     if arch_type == 'quasi_gru':
+        #         for i in range(self.population_size):
+        #             self.pop.append(
+        #                 Quasi_GRU(self.ssne_param.num_input, self.ssne_param.num_hnodes, self.ssne_param.num_output))
+        #         self.hof_net = Quasi_GRU(self.ssne_param.num_input, self.ssne_param.num_hnodes,
+        #                                  self.ssne_param.num_output)
+        #         self.num_substructures = 10
+        #     elif arch_type == 'quasi_ntm':
+        #         for i in range(self.population_size):
+        #             self.pop.append(
+        #                 Quasi_NTM(self.ssne_param.num_input, self.ssne_param.num_hnodes, self.ssne_param.num_output))
+        #         self.hof_net = Quasi_NTM(self.ssne_param.num_input, self.ssne_param.num_hnodes,
+        #                                  self.ssne_param.num_output)
+        #         self.num_substructures = 13
+        # else:
+        #     for i in range(self.population_size):
+        #         self.pop.append(
+        #             normal_net(self.ssne_param.num_input, self.ssne_param.num_hnodes, self.ssne_param.num_output))
+        #     self.hof_net = normal_net(self.ssne_param.num_input, self.ssne_param.num_hnodes,
+        #                               self.ssne_param.num_output)
+        #     self.num_substructures = 4
+
+
 class bck_SSNE:
     def __init__(self, parameters, ssne_param):
         self.current_gen = 0

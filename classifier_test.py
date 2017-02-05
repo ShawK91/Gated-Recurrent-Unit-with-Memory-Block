@@ -5,6 +5,40 @@ from random import randint
 import random
 #np.seterr(all='raise')
 save_foldername = 'RSeq_classifier'
+
+class SSNE_param:
+    def __init__(self, is_memoried):
+        self.num_input = 1
+        self.num_hnodes = 5
+        self.num_output = 1
+        if is_memoried: self.type_id = 'memoried'
+        else: self.type_id = 'normal'
+
+        self.elite_fraction = 0.1
+        self.crossover_prob = 0
+        self.mutation_prob = 0.9
+        self.weight_magnitude_limit = 1000000000000
+        self.mut_distribution = 0 #1-Gaussian, 2-Laplace, 3-Uniform, ELSE-all 1s
+
+        if is_memoried:
+            self.total_num_weights = 3 * (
+                self.num_hnodes * (self.num_input + 1) + self.num_hnodes * (self.num_output + 1)) + 2 * self.num_hnodes * (
+                self.num_hnodes + 1) + self.num_output * (self.num_hnodes + 1) + self.num_hnodes
+        else:
+            #Normalize network flexibility by changing hidden nodes
+            naive_total_num_weights = self.num_hnodes*(self.num_input + 1) + self.num_output * (self.num_hnodes + 1)
+            #self.total_num_weights = self.num_hnodes * (self.num_input + 1) + self.num_output * (self.num_hnodes + 1)
+            #continue
+            mem_weights = 3 * (
+                 self.num_hnodes * (self.num_input + 1) + self.num_hnodes * (self.num_output + 1)) + 2 * self.num_hnodes * (
+                 self.num_hnodes + 1) + self.num_output * (self.num_hnodes + 1) + self.num_hnodes
+            normalization_factor = int(mem_weights/naive_total_num_weights)
+
+            #Set parameters for comparable flexibility with memoried net
+            self.num_hnodes *= normalization_factor + 1
+            self.total_num_weights = self.num_hnodes * (self.num_input + 1) + self.num_output * (self.num_hnodes + 1)
+        print 'Num parameters: ', self.total_num_weights
+
 class tracker(): #Tracker
     def __init__(self, parameters, foldername = save_foldername):
         self.foldername = foldername
@@ -42,43 +76,10 @@ class tracker(): #Tracker
         self.tr_avg_fit.append(np.array([generation, self.avg_fitness]))
         np.savetxt(filename, np.array(self.tr_avg_fit), fmt='%.3f', delimiter=',')
 
-class SSNE_param:
-    def __init__(self, is_memoried):
-        self.num_input = 1
-        self.num_hnodes = 5
-        self.num_output = 1
-        if is_memoried: self.type_id = 'memoried'
-        else: self.type_id = 'normal'
-
-        self.elite_fraction = 0.1
-        self.crossover_prob = 0
-        self.mutation_prob = 0.9
-        self.weight_magnitude_limit = 1000000000000
-        self.mut_distribution = 0 #1-Gaussian, 2-Laplace, 3-Uniform, ELSE-all 1s
-
-        if is_memoried:
-            self.total_num_weights = 3 * (
-                self.num_hnodes * (self.num_input + 1) + self.num_hnodes * (self.num_output + 1)) + 2 * self.num_hnodes * (
-                self.num_hnodes + 1) + self.num_output * (self.num_hnodes + 1) + self.num_hnodes
-        else:
-            #Normalize network flexibility by changing hidden nodes
-            naive_total_num_weights = self.num_hnodes*(self.num_input + 1) + self.num_output * (self.num_hnodes + 1)
-            #self.total_num_weights = self.num_hnodes * (self.num_input + 1) + self.num_output * (self.num_hnodes + 1)
-            #continue
-            mem_weights = 3 * (
-                 self.num_hnodes * (self.num_input + 1) + self.num_hnodes * (self.num_output + 1)) + 2 * self.num_hnodes * (
-                 self.num_hnodes + 1) + self.num_output * (self.num_hnodes + 1) + self.num_hnodes
-            normalization_factor = int(mem_weights/naive_total_num_weights)
-
-            #Set parameters for comparable flexibility with memoried net
-            self.num_hnodes *= normalization_factor + 1
-            self.total_num_weights = self.num_hnodes * (self.num_input + 1) + self.num_output * (self.num_hnodes + 1)
-        print 'Num parameters: ', self.total_num_weights
-
 class Parameters:
     def __init__(self):
             self.population_size = 100
-            self.depth = 7
+            self.depth = 21
             self.interleaving_lower_bound = 10
             self.interleaving_upper_bound = 20
             self.is_memoried = 1
@@ -117,7 +118,7 @@ class Sequence_classifier:
         self.depth = self.parameters.depth
         self.interleaving_upper_bound = self.parameters.interleaving_upper_bound; self.interleaving_lower_bound = self.parameters.interleaving_lower_bound
 
-        self.agent = mod.SSNE(self.parameters, self.ssne_param, parameters.arch_type)
+        self.agent = mod.Test_SSNE(self.parameters, self.ssne_param, True)
 
     def generate_input(self):
         input = []
@@ -178,7 +179,7 @@ class Sequence_classifier:
                 if point_reward > 1: point_reward = 1
                 elif point_reward < -1: point_reward = -1
                 reward += point_reward
-            if j * target > 0: reward += parameters.depth / 2.0
+            if j * target > 0: reward += self.depth / 2.0
 
         elif self.parameters.reward_scheme == 6: #3 Add #3 and #4
             reward = 0.0
@@ -193,57 +194,17 @@ class Sequence_classifier:
 
         return reward
 
-    def run_simulation(self, index, epoch_inputs):
+    def test_net(self, ag, epoch_inputs):  # Test is binary
         reward = 0.0
-        for input in epoch_inputs:
-            self.agent.pop[index].reset_bank()
-            net_output = []
-            for inp in input: #Run network to get output
-                inp=np.array([inp])
-                net_output.append((self.agent.pop[index].feedforward(inp)[0][0] - 0.5) * 2)
-            reward += self.get_reward(input, net_output) #get reward or fitness of the individual
-
-        #print net_output
-        reward /= self.parameters.repeat_trials #Normalize
-        self.agent.fitness_evals[index] = reward #Encode reward as fitness for individual
-        return reward
-
-    def evolve(self):
-        best_epoch_reward = -1000000
-
-        #Generate epoch input
-        epoch_inputs = []
-        for i in range(parameters.repeat_trials):
-            epoch_inputs.append(self.generate_input())
-
-        for i in range(self.parameters.population_size): #Test all genomes/individuals
-            reward = self.run_simulation(i, epoch_inputs)
-            if reward > best_epoch_reward: best_epoch_reward = reward
-
-        #HOF test net
-        hof_index = self.agent.fitness_evals.index(max(self.agent.fitness_evals))
-        hof_score = self.test_net(hof_index)
-
-        #Save population and HOF
-        if (gen + 1) % 1000 == 0:
-            mod.pickle_object(self.agent.pop, save_foldername + '/seq_classification_pop')
-            mod.pickle_object(self.agent.pop[hof_index], save_foldername + '/seq_classification_hof')
-            np.savetxt(save_foldername + '/gen_tag', np.array([gen + 1]), fmt='%.3f', delimiter=',')
-
-        self.agent.epoch()
-        return best_epoch_reward, hof_score
-
-    def test_net(self, index):  # Test is binary
-        reward = 0.0
-        for trial in range(self.parameters.test_trials):
-            self.agent.pop[index].reset_bank()
-            if trial == self.parameters.test_trials - 1: print self.agent.pop[index].memory_cell.transpose(),
+        for trial, input in enumerate(epoch_inputs):
+            ag.reset_bank()
+            #if trial == self.parameters.test_trials - 1: print self.agent.pop[index].memory_cell.transpose(),
 
             input = self.generate_input()  # get input
             net_output = []
             for inp in input:  # Run network to get output
                 inp = np.array([inp])
-                net_output.append((self.agent.pop[index].feedforward(inp)[0][0] - 0.5) * 2)
+                net_output.append((ag.feedforward(inp)[0][0] - 0.5) * 2)
 
             target = 0.0
             reward += 1
@@ -258,18 +219,102 @@ class Sequence_classifier:
 
             if trial == self.parameters.test_trials - 1: print target, net_output[-1]
 
-        print self.agent.pop[index].memory_cell.transpose()
-        print
+        #print self.agent.pop[index].memory_cell.transpose()
+        #print
         return reward / (self.parameters.test_trials)
+
+    def test_pop(self):
+        #Generate epoch input
+        epoch_inputs = []
+        for i in range(parameters.test_trials):
+            epoch_inputs.append(self.generate_input())
+
+        agent_rew = []
+        for ag in self.agent.pop:
+            agent_rew.append(self.test_net(ag, epoch_inputs))
+            print "%0.2f" % agent_rew[-1]
+
+
+        print '#####################################'
+        max_ind = np.argmax(np.array(epoch_reward))
+
+
+
+        return agent_rew
+
+    def test_hof(self):
+
+        ag = mod.unpickle('RSeq_classifier/seq_classification_hof')
+
+
+        #Generate epoch input
+        epoch_inputs = []
+        for i in range(parameters.test_trials):
+            epoch_inputs.append(self.generate_input())
+
+        rew = self.test_net(ag, epoch_inputs)
+        print 'HOF: ', rew
+        return rew
+
+    def test_random(self):
+        ag = mod.Quasi_NTM(self.ssne_param.num_input, self.ssne_param.num_hnodes, self.ssne_param.num_output)
+
+        # Generate epoch input
+        epoch_inputs = []
+        for i in range(parameters.test_trials):
+            epoch_inputs.append(self.generate_input())
+
+        rew = self.test_net(ag, epoch_inputs)
+        print "%0.2f" % rew
+
+        print 'RANDOM: ', rew
+        rew
+        return rew
+
+    def gen_structured_input(self):
+        input = []
+        for i in range(self.depth):
+            # Encode the signal (1 or -1s)
+            if random.random() < 0.5:
+                input.append(-1)
+            else:
+                input.append(1)
+            if i == self.depth - 1: continue
+
+            # Encdoe the noise (0's)
+            num_noise = randint(self.interleaving_lower_bound, self.interleaving_upper_bound)
+            for i in range(num_noise): input.append(0)
+        return input
 
 if __name__ == "__main__":
     print 'Running SEQUENCE CLASSIFIER with ', parameters.arch_type
     task = Sequence_classifier(parameters)
-    for gen in range(parameters.total_gens):
-        epoch_reward, hof_score = task.evolve()
-        print 'Generation:', gen+1, ' Epoch_reward:', "%0.2f" % epoch_reward, '  Score:', "%0.2f" % hof_score, '  Cumul_Score:', "%0.2f" % tracker.hof_avg_fitness
-        tracker.add_fitness(epoch_reward, gen)  # Add average global performance to tracker
-        tracker.add_hof_fitness(hof_score, gen)  # Add best global performance to tracker
+
+    #epoch_reward = task.test_pop()
+
+
+    depth_test_max = 100
+    depth_generalizability = []
+    #Vary depth
+    for depth in range(1, depth_test_max+1):
+        task.depth = depth
+        print 'Depth: ', depth,
+
+        rew = task.test_hof()
+        depth_generalizability.append(rew)
+    task.test_random()
+
+    decorator = np.reshape(np.arange(1,depth_test_max+1), (depth_test_max, 1))
+    depth_generalizability = np.array(depth_generalizability)
+    depth_generalizability = np.reshape(depth_generalizability, (depth_test_max, 1))
+    print decorator.shape, depth_generalizability.shape
+    final_print = np.concatenate((decorator, depth_generalizability))
+    np.savetxt('class_depth_generalizability.csv', depth_generalizability, delimiter=',')
+
+
+    #print 'MAX: ', max(epoch_reward), ' MIN:', min(epoch_reward), ' STD:', np.std(np.array(epoch_reward))
+    #print ' Epoch_reward:', "%0.2f" % epoch_reward
+
 
 
 
